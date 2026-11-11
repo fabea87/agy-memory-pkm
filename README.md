@@ -8,7 +8,14 @@ Persistent agent memory structured as a personal knowledge management (PKM) vaul
 
 ## ⚡ One-Line Installation
 
-Works identically across **Windows** and **macOS**.
+Works identically across **Windows** and **macOS**. `install.py` will automatically verify and install dependencies from `requirements.txt` if needed.
+
+### macOS / Linux (Terminal)
+```bash
+python3 install.py
+# Or using the shell wrapper:
+bash install.sh
+```
 
 ### Windows (PowerShell)
 ```powershell
@@ -17,11 +24,9 @@ python install.py
 .\install.ps1
 ```
 
-### macOS / Linux (Terminal)
+*(Optional: manual dependency install)*
 ```bash
-python3 install.py
-# Or using the shell wrapper:
-bash install.sh
+pip install -r requirements.txt
 ```
 
 ---

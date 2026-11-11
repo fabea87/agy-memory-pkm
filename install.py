@@ -39,6 +39,18 @@ def install():
     print(f"[*] Target Plugin Path:    {PLUGIN_TARGET}")
     print(f"[*] Target Vault Path:     {VAULT_DIR}")
 
+    # 0. Check & Install Python Dependencies
+    req_file = PACKAGE_ROOT / "requirements.txt"
+    try:
+        import fastembed
+        print("[+] Verified dependency: fastembed (multilingual ONNX embedding engine)")
+    except ImportError:
+        print("[*] Installing required dependencies from requirements.txt...")
+        if req_file.exists():
+            subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(req_file)], check=False)
+        else:
+            subprocess.run([sys.executable, "-m", "pip", "install", "fastembed>=0.9.0"], check=False)
+
     # 1. Ensure target directory structure
     PLUGIN_TARGET.mkdir(parents=True, exist_ok=True)
     (PLUGIN_TARGET / "bin").mkdir(parents=True, exist_ok=True)
@@ -47,8 +59,9 @@ def install():
 
     # 2. Copy source files
     print("\n[+] Deploying extension modules...")
-    for item in ["plugin.json"]:
-        shutil.copy2(PACKAGE_ROOT / item, PLUGIN_TARGET / item)
+    for item in ["plugin.json", "requirements.txt"]:
+        if (PACKAGE_ROOT / item).exists():
+            shutil.copy2(PACKAGE_ROOT / item, PLUGIN_TARGET / item)
 
     for item in (PACKAGE_ROOT / "bin").glob("*.py"):
         shutil.copy2(item, PLUGIN_TARGET / "bin" / item.name)
