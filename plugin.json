@@ -1,0 +1,12 @@
+{
+  "name": "agy-memory-pkm",
+  "version": "1.0.0",
+  "description": "Theme-Centric Hierarchical PKM Memory Extension with Two-Tier Gated Injection, Autonomous Distillation, and Markdown Digest Export for Antigravity CLI",
+  "author": {
+    "name": "fabea"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fabea87/agy-memory-pkm"
+  }
+}
