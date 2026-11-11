@@ -128,12 +128,12 @@ def compile_theme_index():
         except Exception:
             pass
 
-    # Pre-compute semantic vectors using all-MiniLM-L6-v2
+    # Pre-compute semantic vectors using multilingual MiniLM
     try:
         bin_dir = Path(__file__).parent
         if str(bin_dir) not in sys.path:
             sys.path.insert(0, str(bin_dir))
-        from semantic_engine import embed_texts
+        from semantic_engine import embed_texts, embed_single
         descriptions = []
         for t in themes:
             scope = t.get("semantic_scope", "")
@@ -145,6 +145,51 @@ def compile_theme_index():
         if vectors:
             for idx, vec in enumerate(vectors):
                 themes[idx]["vector"] = vec
+
+        # Pre-compute vectors for each theme's core principles (for Tier-2 semantic matching)
+        for t in themes:
+            pr_list = t.get("core_principles", [])
+            if pr_list:
+                pr_vecs = embed_texts(pr_list)
+                if pr_vecs:
+                    t["principle_vectors"] = pr_vecs
+
+        # Pre-compute all insight vectors for fast semantic search
+        all_notes_index = []
+        for t in themes:
+            all_notes_index.append({
+                "id": t["id"],
+                "title": t["title"],
+                "type": "theme",
+                "vector": t.get("vector")
+            })
+
+        if INSIGHTS_DIR.exists():
+            insight_paths = list(INSIGHTS_DIR.glob("*.md"))
+            insight_texts = []
+            insight_metas = []
+            for ip in insight_paths:
+                try:
+                    icontent = ip.read_text(encoding="utf-8")
+                    imeta, ibody = parse_markdown_frontmatter(icontent)
+                    insight_metas.append({
+                        "id": imeta.get("id", ip.stem),
+                        "title": imeta.get("title", ip.stem),
+                        "type": imeta.get("type", "insight"),
+                        "theme": imeta.get("theme", "")
+                    })
+                    insight_texts.append(f"{imeta.get('title', '')} {ibody[:300]}")
+                except Exception:
+                    pass
+
+            if insight_texts:
+                i_vecs = embed_texts(insight_texts)
+                if i_vecs:
+                    for m, iv in zip(insight_metas, i_vecs):
+                        m["vector"] = iv
+                        all_notes_index.append(m)
+
+        (STATE_DIR / "vector_store.json").write_text(json.dumps(all_notes_index, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
 
@@ -224,8 +269,23 @@ def run_distillation(session_id=None):
             # For each extracted preference, integrate into theme or save as atomic insight
             for idx, item in enumerate(extracted):
                 raw = item["raw"]
-                # Detect target theme
-                target_theme = "theme-cli-tooling" if any(w in raw.lower() for w in ["cli", "agy", "terminal", "statusline", "model"]) else "theme-applied-linguistics"
+                # Detect target theme via dense semantic vector similarity
+                target_theme = "theme-cli-tooling"
+                best_sim = -1.0
+                try:
+                    from semantic_engine import embed_single, cosine_similarity
+                    raw_vec = embed_single(raw)
+                    if raw_vec and INDEX_FILE.exists():
+                        cur_idx = json.loads(INDEX_FILE.read_text(encoding="utf-8"))
+                        for th in cur_idx.get("themes", []):
+                            th_vec = th.get("vector")
+                            if th_vec:
+                                sim = cosine_similarity(raw_vec, th_vec)
+                                if sim > best_sim:
+                                    best_sim = sim
+                                    target_theme = th["id"]
+                except Exception:
+                    pass
                 slug = re.sub(r"[^a-zA-Z0-9]+", "-", raw[:40].lower()).strip("-")
                 iid = f"pref-{slug}-{item['step']}"
                 if len(iid) > 50:

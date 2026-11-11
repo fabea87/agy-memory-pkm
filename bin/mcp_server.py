@@ -76,25 +76,58 @@ def list_tools():
 
 def handle_call_tool(name, args):
     if name == "memory_search":
-        q = args.get("query", "").lower()
+        q = args.get("query", "")
         t_filter = args.get("theme", "")
+        vector_store_file = VAULT_DIR / ".state" / "vector_store.json"
         results = []
 
-        # Search Themes
-        if THEMES_DIR.exists():
-            for tp in THEMES_DIR.glob("*.md"):
-                content = tp.read_text(encoding="utf-8")
-                if q in content.lower():
-                    results.append(f"### [Theme] [[{tp.stem}]]\n{content[:400]}...\n")
+        # 1. Semantic Vector Search (Multilingual MiniLM)
+        try:
+            bin_dir = Path(__file__).parent
+            if str(bin_dir) not in sys.path:
+                sys.path.insert(0, str(bin_dir))
+            from semantic_engine import embed_single, cosine_similarity
 
-        # Search Insights
-        if INSIGHTS_DIR.exists():
-            for ip in INSIGHTS_DIR.glob("*.md"):
-                content = ip.read_text(encoding="utf-8")
-                if t_filter and t_filter not in content:
-                    continue
-                if q in content.lower():
-                    results.append(f"### [Insight] [[{ip.stem}]]\n{content[:400]}...\n")
+            if vector_store_file.exists():
+                store = json.loads(vector_store_file.read_text(encoding="utf-8"))
+                q_vec = embed_single(q)
+                if q_vec:
+                    ranked = []
+                    for item in store:
+                        if t_filter and item.get("theme") != t_filter:
+                            continue
+                        iv = item.get("vector")
+                        if iv:
+                            sim = cosine_similarity(q_vec, iv)
+                            if sim >= 0.20:
+                                ranked.append((sim, item))
+                    ranked.sort(key=lambda x: x[0], reverse=True)
+                    for sim, item in ranked[:5]:
+                        nid = item["id"]
+                        ntype = item["type"]
+                        target_dir = THEMES_DIR if ntype == "theme" else INSIGHTS_DIR
+                        fpath = target_dir / f"{nid}.md"
+                        snippet = fpath.read_text(encoding="utf-8")[:350] if fpath.exists() else item.get("title", "")
+                        results.append(f"### [{ntype.upper()}] [[{nid}]] (Semantic Relevance: {sim:.3f})\n{snippet}...\n")
+        except Exception:
+            results = []
+
+        # 2. Substring Fallback
+        if not results:
+            q_low = q.lower()
+            if THEMES_DIR.exists():
+                for tp in THEMES_DIR.glob("*.md"):
+                    content = tp.read_text(encoding="utf-8")
+                    if q_low in content.lower():
+                        results.append(f"### [Theme] [[{tp.stem}]]\n{content[:400]}...\n")
+
+            if INSIGHTS_DIR.exists():
+                for ip in INSIGHTS_DIR.glob("*.md"):
+                    content = ip.read_text(encoding="utf-8")
+                    if t_filter and t_filter not in content:
+                        continue
+                    if q_low in content.lower():
+                        results.append(f"### [Insight] [[{ip.stem}]]\n{content[:400]}...\n")
 
         text = "\n---\n".join(results) if results else f"No memory entries matching '{q}'."
         return {"content": [{"type": "text", "text": text}]}

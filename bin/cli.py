@@ -59,24 +59,54 @@ def cmd_list(args):
             print("  (None)")
 
 def cmd_search(args):
-    q = args.query.lower()
-    print(f"Searching vault for: '{q}'\n")
-    found = 0
+    q = args.query
+    print(f"🔍 Semantic Vault Search for: '{q}'\n")
 
+    vector_store_file = STATE_DIR / "vector_store.json"
+    results = []
+
+    # 1. Try Dense Semantic Vector Search (paraphrase-multilingual-MiniLM)
+    try:
+        bin_dir = Path(__file__).parent
+        if str(bin_dir) not in sys.path:
+            sys.path.insert(0, str(bin_dir))
+        from semantic_engine import embed_single, cosine_similarity
+
+        if vector_store_file.exists():
+            import json
+            store = json.loads(vector_store_file.read_text(encoding="utf-8"))
+            q_vec = embed_single(q)
+            if q_vec:
+                for item in store:
+                    iv = item.get("vector")
+                    if iv:
+                        sim = cosine_similarity(q_vec, iv)
+                        if sim >= 0.20:
+                            results.append((sim, item["type"], item["id"], item["title"]))
+                results.sort(key=lambda x: x[0], reverse=True)
+    except Exception:
+        results = []
+
+    if results:
+        print(f"Found {len(results)} semantically relevant entries:\n")
+        for sim, ntype, nid, title in results[:8]:
+            icon = "🔷 [THEME]  " if ntype == "theme" else "🔹 [INSIGHT]"
+            print(f"  {icon} [[{nid}]] ({title})  [Sim: {sim:.3f}]")
+        return
+
+    # 2. Fallback to Substring Search
+    found = 0
+    q_low = q.lower()
     if THEMES_DIR.exists():
         for tp in THEMES_DIR.glob("*.md"):
-            txt = tp.read_text(encoding="utf-8")
-            if q in txt.lower():
+            if q_low in tp.read_text(encoding="utf-8").lower():
                 print(f"🔷 Theme: [[{tp.stem}]]")
                 found += 1
-
     if INSIGHTS_DIR.exists():
         for ip in INSIGHTS_DIR.glob("*.md"):
-            txt = ip.read_text(encoding="utf-8")
-            if q in txt.lower():
+            if q_low in ip.read_text(encoding="utf-8").lower():
                 print(f"🔹 Insight: [[{ip.stem}]]")
                 found += 1
-
     if found == 0:
         print("No matching notes found.")
 

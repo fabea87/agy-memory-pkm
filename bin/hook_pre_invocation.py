@@ -104,17 +104,26 @@ def main():
         print(json.dumps({"injectSteps": []}))
         return
 
-    # Tier 2: Precision Leaf Retrieval within Active Theme
+    # Tier 2: Precision Leaf Retrieval within Active Theme (Semantic Ranking)
     principles = best_theme.get("core_principles", [])
-    prompt_words = set(re.findall(r"\w{3,}", prompt_lower))
+    pr_vecs = best_theme.get("principle_vectors", [])
 
-    scored = []
-    for p in principles:
-        overlap = sum(1 for w in prompt_words if w in p.lower())
-        scored.append((overlap, p))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-    selected_principles = [p for _, p in scored[:2]] if scored else principles[:2]
+    if prompt_vec and pr_vecs and len(pr_vecs) == len(principles):
+        try:
+            from semantic_engine import cosine_similarity
+            scored = [(cosine_similarity(prompt_vec, pv), p) for p, pv in zip(principles, pr_vecs)]
+            scored.sort(key=lambda x: x[0], reverse=True)
+            selected_principles = [p for _, p in scored[:2]]
+        except Exception:
+            selected_principles = principles[:2]
+    else:
+        prompt_words = set(re.findall(r"\w{3,}", prompt_lower))
+        scored = []
+        for p in principles:
+            overlap = sum(1 for w in prompt_words if w in p.lower())
+            scored.append((overlap, p))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        selected_principles = [p for _, p in scored[:2]] if scored else principles[:2]
 
     injected_lines = [f"**Active Theme: {best_theme.get('title', 'General')}**"]
     for p in selected_principles:
