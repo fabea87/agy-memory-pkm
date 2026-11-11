@@ -20,14 +20,14 @@ if hasattr(sys.stdout, "reconfigure"):
 VAULT_DIR = os.environ.get("AGY_MEMORY_VAULT", os.path.expanduser("~/.gemini/memory"))
 THEME_INDEX = os.path.join(VAULT_DIR, ".state", "theme_index.json")
 
-def score_theme(theme, prompt_lower, cwd_lower):
+def score_theme(theme, prompt_lower, cwd_lower, prompt_vec=None):
     score = 0.0
 
     # 1. Path Pattern Match (Strongest signal)
     for pat in theme.get("path_patterns", []):
         pat_clean = pat.replace("*", "").lower().strip()
         if pat_clean and pat_clean in cwd_lower:
-            score += 0.55
+            score += 0.45
             break
 
     # 2. Keyword Trigger Match
@@ -38,7 +38,18 @@ def score_theme(theme, prompt_lower, cwd_lower):
             matched_kws += 1
 
     if matched_kws > 0:
-        score += min(0.20 * matched_kws, 0.60)
+        score += min(0.20 * matched_kws, 0.45)
+
+    # 3. Dense Semantic Vector Similarity (Multilingual MiniLM)
+    th_vec = theme.get("vector")
+    if prompt_vec and th_vec:
+        try:
+            from semantic_engine import cosine_similarity
+            sem_sim = cosine_similarity(prompt_vec, th_vec)
+            if sem_sim > 0.20:
+                score += sem_sim
+        except Exception:
+            pass
 
     return score
 
@@ -67,18 +78,29 @@ def main():
     prompt_lower = user_prompt.lower()
     cwd_lower = cwd.lower().replace("\\", "/")
 
+    # Extract semantic vector for user prompt
+    prompt_vec = None
+    try:
+        bin_dir = os.path.dirname(os.path.abspath(__file__))
+        if bin_dir not in sys.path:
+            sys.path.insert(0, bin_dir)
+        from semantic_engine import embed_single
+        prompt_vec = embed_single(user_prompt)
+    except Exception:
+        pass
+
     # Tier 1: Theme Gatekeeper
     best_theme = None
     best_score = 0.0
 
     for theme in registry.get("themes", []):
-        s = score_theme(theme, prompt_lower, cwd_lower)
+        s = score_theme(theme, prompt_lower, cwd_lower, prompt_vec)
         if s > best_score:
             best_score = s
             best_theme = theme
 
-    # Gating Threshold: 0.35. If no theme matches, inject 0 tokens.
-    if not best_theme or best_score < 0.35:
+    # Gating Threshold: 0.25. If no theme matches, inject 0 tokens.
+    if not best_theme or best_score < 0.25:
         print(json.dumps({"injectSteps": []}))
         return
 

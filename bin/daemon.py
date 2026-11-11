@@ -121,11 +121,32 @@ def compile_theme_index():
                 "title": meta.get("title", tpath.stem),
                 "keywords": combined_kws,
                 "path_patterns": pats,
+                "semantic_scope": meta.get("semantic_scope", ""),
                 "core_principles": principles[:6],
                 "connected_insights": insights_by_theme.get(tid, [])
             })
         except Exception:
             pass
+
+    # Pre-compute semantic vectors using all-MiniLM-L6-v2
+    try:
+        bin_dir = Path(__file__).parent
+        if str(bin_dir) not in sys.path:
+            sys.path.insert(0, str(bin_dir))
+        from semantic_engine import embed_texts
+        descriptions = []
+        for t in themes:
+            scope = t.get("semantic_scope", "")
+            scope_str = " ".join(scope) if isinstance(scope, list) else str(scope)
+            principles_str = " ".join(t.get("core_principles", []))
+            descriptions.append(f"{t['title']}. Scope: {scope_str}. Principles: {principles_str}")
+
+        vectors = embed_texts(descriptions)
+        if vectors:
+            for idx, vec in enumerate(vectors):
+                themes[idx]["vector"] = vec
+    except Exception:
+        pass
 
     INDEX_FILE.write_text(json.dumps({"themes": themes}, indent=2, ensure_ascii=False), encoding="utf-8")
 
